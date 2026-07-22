@@ -6,7 +6,7 @@ import re
 import json
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional, Generator
+from typing import List, Dict, Any, Optional, Generator, AsyncGenerator
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -154,8 +154,8 @@ class Agent:
             model=self.config.llm.model,
             temperature=self.config.llm.temperature,
             max_tokens=self.config.llm.max_tokens,
-            openai_api_key=self.config.llm.api_key,
-            openai_api_base=self.MIMO_BASE_URL,
+            api_key=self.config.llm.api_key,
+            base_url=self.MIMO_BASE_URL,
         )
         logger.info("LLM初始化完成")
 
