@@ -22,15 +22,14 @@ logger = logging.getLogger(__name__)
 class RAGEngine:
     """RAG引擎核心类"""
 
-    # 分类映射（适配RAG教程文档目录结构）
+    # 分类映射（适配生活百科文档目录结构）
     CATEGORY_MAPPING = {
-        'chapter1': 'RAG基础',
-        'chapter2': '数据准备',
-        'chapter3': '索引构建',
-        'chapter4': '检索优化',
-        'chapter5': '生成集成',
-        'chapter6': '系统评估',
-        'chapter7': '高级RAG',
+        '食品安全': '食品安全',
+        '出行指南': '出行指南',
+        '法律常识': '法律常识',
+        '健康生活': '健康生活',
+        '家居安全': '家居安全',
+        '消费维权': '消费维权',
     }
     CATEGORY_LABELS = list(dict.fromkeys(CATEGORY_MAPPING.values()))
 
