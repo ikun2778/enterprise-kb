@@ -153,6 +153,27 @@ class Agent:
         # 默认为一般查询
         return 'general'
 
+    def _extract_filters_from_query(self, query: str) -> dict:
+        """
+        从用户问题中提取元数据过滤条件
+
+        Args:
+            query: 用户查询
+
+        Returns:
+            过滤条件字典
+        """
+        filters = {}
+
+        # 分类关键词
+        category_keywords = RAGEngine.get_supported_categories()
+        for cat in category_keywords:
+            if cat in query:
+                filters['category'] = cat
+                break
+
+        return filters
+
     # ==================== 查询重写 ====================
 
     def query_rewrite(self, query: str) -> str:
@@ -518,10 +539,17 @@ class Agent:
             # 详细查询和一般查询使用智能重写
             rewritten_query = await asyncio.to_thread(self.query_rewrite, query)
 
-        # 3. 检索相关子块
-        relevant_chunks = await asyncio.to_thread(
-            self.rag_engine.hybrid_search, rewritten_query
-        )
+        # 3. 检索相关子块（自动应用元数据过滤）
+        filters = self._extract_filters_from_query(query)
+        if filters:
+            logger.info(f"应用过滤条件: {filters}")
+            relevant_chunks = await asyncio.to_thread(
+                self.rag_engine.metadata_filtered_search, rewritten_query, filters
+            )
+        else:
+            relevant_chunks = await asyncio.to_thread(
+                self.rag_engine.hybrid_search, rewritten_query
+            )
 
         # 4. 检查是否找到相关内容
         if not relevant_chunks:

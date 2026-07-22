@@ -129,19 +129,29 @@ async def main():
                 continue
 
             # 发送消息
-            print("\n⏳ 思考中...")
             result = await agent.chat(user_input, conversation_id)
 
             # 更新会话ID
             conversation_id = result["conversation_id"]
 
-            # 打印回答
-            print("\n💬 回答:")
-            print(result["answer"])
+            # 显示查询类型
+            route_type = result.get("route_type", "general")
+            route_names = {"list": "列表查询", "detail": "详细查询", "general": "一般查询"}
+            print(f"\n🎯 查询类型: {route_names.get(route_type, route_type)}")
 
-            # 打印来源和工具
-            print_sources(result.get("sources", []))
-            print_tools(result.get("tools_used", []))
+            # 打印回答
+            print(f"\n💬 回答:\n{result['answer']}")
+
+            # 打印来源（简化格式）
+            sources = result.get("sources", [])
+            if sources:
+                print("\n📎 来源:")
+                for i, src in enumerate(sources[:3], 1):
+                    metadata = src.get("metadata", {})
+                    doc_name = metadata.get("document_name", "未知")
+                    category = metadata.get("category", "")
+                    score = src.get("score", 0)
+                    print(f"  [{i}] {doc_name} ({category}) - {score:.1%}")
 
         except KeyboardInterrupt:
             print("\n\n👋 感谢使用，再见！")
