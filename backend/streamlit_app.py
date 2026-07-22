@@ -367,7 +367,7 @@ elif st.session_state.page == "results":
 
 # ==================== Tab: 面试模拟（独立页面入口） ====================
 # 在侧边栏添加面试模拟入口
-with sidebar := st.sidebar:
+with st.sidebar:
     st.markdown("")
     if st.button("🎤 面试模拟", use_container_width=True):
         st.session_state.page = "interview"
