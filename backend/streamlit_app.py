@@ -250,14 +250,15 @@ with tab1:
                         # 步骤状态跟踪
                         steps = {
                             1: "解析 JD & 简历",
-                            3: "技能匹配评分",
-                            4: "知识库检索",
-                            5: "面试题 & 简历优化",
-                            7: "岗位推荐",
-                            8: "生成报告",
+                            2: "技能匹配评分",
+                            3: "知识库检索",
+                            4: "面试题 & 简历优化",
+                            5: "岗位推荐",
+                            6: "生成报告",
                         }
                         step_status = {s: "wait" for s in steps}
                         final_result = None
+                        error_msg = None
 
                         for line in resp.iter_lines(decode_unicode=True):
                             if not line or not line.startswith("data: "):
@@ -268,7 +269,10 @@ with tab1:
                             status = event.get("status", "")
                             message = event.get("message", "")
 
-                            if status == "processing" and step in step_status:
+                            if status == "error":
+                                error_msg = message
+                                break
+                            elif status == "processing" and step in step_status:
                                 step_status[step] = "run"
                             elif status == "done" and step in step_status:
                                 step_status[step] = "done"
@@ -287,8 +291,12 @@ with tab1:
                                     html += f'<div class="step-item"><span class="step-dot {cls}">{icon}</span>{label}<span style="color:#888;font-size:0.85rem">{msg}</span></div>'
                                 st.markdown(html, unsafe_allow_html=True)
 
-                        # 展示最终结果
-                        if final_result:
+                        # 错误处理
+                        if error_msg:
+                            st.error(f"分析失败: {error_msg}")
+                        elif not final_result:
+                            st.warning("分析未完成，请检查后端服务状态")
+                        elif final_result:
                             st.divider()
                             score = final_result.get("score", 0)
                             score_cls = "score-high" if score >= 70 else ("score-mid" if score >= 50 else "score-low")

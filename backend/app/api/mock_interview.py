@@ -35,7 +35,11 @@ async def start_interview(request: MockInterviewStartRequest):
             skills=request.skills,
             difficulty=request.difficulty,
         )
+        if "error" in result:
+            raise HTTPException(status_code=503, detail=result["error"])
         return MockInterviewStartResponse(**result)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"面试模拟失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -54,7 +58,11 @@ async def answer_question(request: MockInterviewAnswerRequest):
             reference_answer=request.reference_answer,
             user_answer=request.user_answer,
         )
+        if "error" in result:
+            raise HTTPException(status_code=503, detail=result["error"])
         return MockInterviewAnswerResponse(**result)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"面试评价失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

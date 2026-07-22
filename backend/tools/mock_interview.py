@@ -120,4 +120,12 @@ class MockInterviewAgent:
                 except json.JSONDecodeError:
                     pass
             logger.error(f"面试模拟返回非JSON: {text[:200]}")
-            return {"question": "", "score": 0, "feedback": "解析失败"}
+            return {
+                "question": "请介绍一下你的项目经验",
+                "category": "项目",
+                "difficulty": "medium",
+                "key_points": ["项目背景", "技术选型", "个人贡献"],
+                "reference_answer": "请从项目背景、技术栈选择、个人职责和成果等方面回答",
+                "score": 0,
+                "feedback": "问题生成异常，已返回默认问题",
+            }

@@ -52,7 +52,7 @@ class KnowledgeSearchTool:
                     }
                     if item not in skill_results:
                         skill_results.append(item)
-                if skill_results:
+                if len(skill_results) >= top_k_per_skill * 2:
                     break
 
             all_results.append(
