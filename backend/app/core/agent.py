@@ -922,6 +922,9 @@ class Agent:
                 "tools_used": tools_used,
             },
         }
+
+    @staticmethod
+    def _get_level(score: int) -> str:
         if score >= 80:
             return "高度匹配"
         elif score >= 60:
