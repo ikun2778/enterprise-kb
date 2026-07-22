@@ -150,8 +150,7 @@ async def main():
                     metadata = src.get("metadata", {})
                     doc_name = metadata.get("document_name", "未知")
                     category = metadata.get("category", "")
-                    score = src.get("score", 0)
-                    print(f"  [{i}] {doc_name} ({category}) - {score:.1%}")
+                    print(f"  [{i}] {doc_name} ({category})")
 
         except KeyboardInterrupt:
             print("\n\n👋 感谢使用，再见！")
