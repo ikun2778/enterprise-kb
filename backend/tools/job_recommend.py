@@ -19,16 +19,28 @@ class JobRecommender:
         user_skills: List[str],
         top_k: int = 3,
     ) -> Dict[str, Any]:
-        # 从知识库中检索岗位JD
         query = " ".join(user_skills[:10])
+
+        # 优先用元数据过滤搜索岗位JD
         results = self.rag_engine.metadata_filtered_search(
             query, {"category": "岗位JD"}, top_k=top_k * 2
         )
 
-        # 如果没有检索到，使用普通搜索
+        # fallback: 普通搜索后过滤
         if not results:
-            results = self.rag_engine.hybrid_search(query, top_k=top_k * 2)
+            results = self.rag_engine.hybrid_search(query, top_k=top_k * 3)
             results = [r for r in results if r.metadata.get("category") == "岗位JD"]
+
+        # fallback2: 如果还是没有，直接按文档名搜索
+        if not results:
+            results = self.rag_engine.hybrid_search("岗位 JD 招聘", top_k=top_k * 3)
+            results = [r for r in results if "JD" in r.metadata.get("document_name", "") or "岗位" in r.metadata.get("category", "")]
+
+        # fallback3: 用所有岗位JD父文档
+        if not results:
+            all_jd = self.rag_engine.filter_documents_by_category("岗位JD")
+            if all_jd:
+                results = all_jd[:top_k * 2]
 
         recommendations: List[Dict[str, Any]] = []
         for doc in results[:top_k]:

@@ -294,10 +294,8 @@ elif st.session_state.page == "results":
     tab_labels = ["📊 分析报告"]
     if tech_qs or proj_qs:
         tab_labels.append(f"🎯 面试题 ({len(tech_qs) + len(proj_qs)})")
-    if optimizations:
-        tab_labels.append(f"✏️ 简历优化 ({len(optimizations)})")
-    if recommendations:
-        tab_labels.append(f"💼 推荐岗位 ({len(recommendations)})")
+    tab_labels.append(f"✏️ 简历优化 ({len(optimizations)})" if optimizations else "✏️ 简历优化")
+    tab_labels.append(f"💼 推荐岗位 ({len(recommendations)})" if recommendations else "💼 推荐岗位")
 
     tabs = st.tabs(tab_labels)
     tab_idx = 0
@@ -328,8 +326,8 @@ elif st.session_state.page == "results":
         tab_idx += 1
 
     # Tab 3: 简历优化
-    if optimizations:
-        with tabs[tab_idx]:
+    with tabs[tab_idx]:
+        if optimizations:
             for i, o in enumerate(optimizations, 1):
                 st.markdown(f"**{i}. {o.get('project_name', '项目')}**")
                 col_l, col_r = st.columns(2)
@@ -341,11 +339,13 @@ elif st.session_state.page == "results":
                     st.success(o.get("optimized", "")[:200])
                 st.caption(f"💡 {o.get('reason', '')}")
                 st.divider()
-        tab_idx += 1
+        else:
+            st.info("当前分析未生成简历优化建议。可能原因：简历项目描述已足够清晰，或知识库中缺少相关参考案例。")
+    tab_idx += 1
 
     # Tab 4: 推荐岗位
-    if recommendations:
-        with tabs[tab_idx]:
+    with tabs[tab_idx]:
+        if recommendations:
             for rec in recommendations:
                 r_score = rec.get("score", 0)
                 color = "#22c55e" if r_score >= 70 else ("#f59e0b" if r_score >= 50 else "#ef4444")
@@ -356,6 +356,8 @@ elif st.session_state.page == "results":
                 with c2:
                     st.markdown(f'<p style="text-align:right;font-size:1.3rem;font-weight:700;color:{color}">{r_score}%</p>', unsafe_allow_html=True)
                 st.divider()
+        else:
+            st.info("当前未匹配到推荐岗位。可能原因：知识库中岗位JD数据不足，或你的技能组合较为独特。可通过「知识库问答」了解更多岗位信息。")
 
     # ---- 底部信息 ----
     st.markdown("")
