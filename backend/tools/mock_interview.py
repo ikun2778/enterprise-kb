@@ -115,6 +115,9 @@ class MockInterviewAgent:
             start = text.find("{")
             end = text.rfind("}") + 1
             if start != -1 and end > start:
-                return json.loads(text[start:end])
+                try:
+                    return json.loads(text[start:end])
+                except json.JSONDecodeError:
+                    pass
             logger.error(f"面试模拟返回非JSON: {text[:200]}")
             return {"question": "", "score": 0, "feedback": "解析失败"}

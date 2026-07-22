@@ -96,7 +96,10 @@ class ResumeParser:
             start = text.find("{")
             end = text.rfind("}") + 1
             if start != -1 and end > start:
-                return json.loads(text[start:end])
+                try:
+                    return json.loads(text[start:end])
+                except json.JSONDecodeError:
+                    pass
             logger.error(f"简历解析返回非JSON内容: {text[:200]}")
             return {
                 "name": "",
