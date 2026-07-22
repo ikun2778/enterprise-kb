@@ -3,6 +3,13 @@
 """
 
 import os
+
+# 必须在导入其他库之前设置环境变量
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional

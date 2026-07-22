@@ -3,6 +3,7 @@ Agent核心 - 查询路由、查询重写、多种回答模式、流式输出
 完整实现C8的所有核心功能
 """
 
+import re
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional, Generator
@@ -16,6 +17,73 @@ from .rag_engine import RAGEngine
 from .memory import ConversationMemory
 
 logger = logging.getLogger(__name__)
+
+
+def markdown_to_text(md_text: str) -> str:
+    """
+    将Markdown格式转换为纯文本（终端友好）
+
+    Args:
+        md_text: Markdown格式文本
+
+    Returns:
+        纯文本
+    """
+    if not md_text:
+        return ""
+
+    text = md_text
+
+    # 移除标题标记，保留内容
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+
+    # 移除粗体标记
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'__(.*?)__', r'\1', text)
+
+    # 移除斜体标记
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'_(.*?)_', r'\1', text)
+
+    # 移除删除线
+    text = re.sub(r'~~(.*?)~~', r'\1', text)
+
+    # 移除代码块
+    text = re.sub(r'```[\s\S]*?```', '', text)
+
+    # 移除行内代码
+    text = re.sub(r'`(.*?)`', r'\1', text)
+
+    # 移除链接，保留文本
+    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
+
+    # 移除图片
+    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+
+    # 处理表格 - 转换为简单格式
+    lines = text.split('\n')
+    processed_lines = []
+    for line in lines:
+        # 跳过表格分隔行
+        if re.match(r'^\|[\s\-:]+\|$', line.strip()):
+            continue
+        # 处理表格行
+        if line.strip().startswith('|') and line.strip().endswith('|'):
+            cells = [cell.strip() for cell in line.strip().strip('|').split('|')]
+            line = '  '.join(cells)
+        processed_lines.append(line)
+    text = '\n'.join(processed_lines)
+
+    # 移除引用标记
+    text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
+
+    # 移除水平线
+    text = re.sub(r'^[\-\*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+
+    # 清理多余的空行
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
 
 
 class Agent:
@@ -155,7 +223,7 @@ class Agent:
             conversation_id: 会话ID
 
         Returns:
-            生成的回答
+            生成的回答（纯文本格式）
         """
         if not self.llm:
             return "抱歉，LLM服务未配置，请检查API密钥设置。"
@@ -169,8 +237,9 @@ class Agent:
 要求：
 1. 基于提供的信息回答，如果信息不足请诚实说明
 2. 回答要准确、详细、有条理
-3. 如果是技术问题，尽量提供具体的示例或步骤
-4. 使用中文回答"""),
+3. 使用纯文本格式输出，不要使用Markdown格式（不要用#、**、|等符号）
+4. 使用中文回答
+5. 重要：直接输出纯文本，不要添加任何格式标记"""),
             MessagesPlaceholder(variable_name="history"),
             ("human", """
 相关知识库信息:
@@ -178,7 +247,7 @@ class Agent:
 
 用户问题: {question}
 
-请回答:""")
+请用纯文本格式回答（不要使用Markdown）:""")
         ])
 
         chain = prompt | self.llm | StrOutputParser()
@@ -188,7 +257,8 @@ class Agent:
             "question": query
         })
 
-        return response
+        # 转换为纯文本（防止LLM仍然输出Markdown）
+        return markdown_to_text(response)
 
     def generate_step_by_step_answer(self, query: str, context_docs: List[Document], conversation_id: str) -> str:
         """
@@ -200,7 +270,7 @@ class Agent:
             conversation_id: 会话ID
 
         Returns:
-            分步骤的详细回答
+            分步骤的详细回答（纯文本格式）
         """
         if not self.llm:
             return "抱歉，LLM服务未配置，请检查API密钥设置。"
@@ -209,27 +279,27 @@ class Agent:
         history = self.memory.get_langchain_messages(conversation_id)
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """你是一个专业的技术导师。请根据知识库信息，为用户提供详细的分步骤解释。
+            ("system", """你是一个专业的知识库助手。请根据知识库信息，为用户提供详细的解释。
 
-请灵活组织回答，建议包含以下部分（可根据实际内容调整）：
+请用纯文本格式组织回答，建议包含以下部分（可根据实际内容调整）：
 
-## 概念介绍
+概念介绍：
 [简要介绍相关概念和背景]
 
-## 核心原理
+核心内容：
 [详细解释核心原理和机制]
 
-## 实现步骤
+具体步骤：
 [详细的分步骤说明，每步包含具体操作]
 
-## 注意事项
-[仅在有实用建议时包含。优先使用原文中的建议，如果原文内容与主题无关或为空，可以基于内容总结关键要点，或者完全省略此部分]
+注意事项：
+[仅在有实用建议时包含]
 
 注意：
+- 使用纯文本格式，不要使用Markdown格式（不要用#、**、|等符号）
 - 根据实际内容灵活调整结构
 - 不要强行填充无关内容
 - 重点突出实用性和可操作性
-- 如果没有额外的建议要分享，可以省略注意事项部分
 - 使用中文回答"""),
             MessagesPlaceholder(variable_name="history"),
             ("human", """
@@ -238,7 +308,7 @@ class Agent:
 
 用户问题: {question}
 
-请回答:""")
+请用纯文本格式回答（不要使用Markdown）:""")
         ])
 
         chain = prompt | self.llm | StrOutputParser()
@@ -248,7 +318,8 @@ class Agent:
             "question": query
         })
 
-        return response
+        # 转换为纯文本（防止LLM仍然输出Markdown）
+        return markdown_to_text(response)
 
     def generate_list_answer(self, query: str, context_docs: List[Document]) -> str:
         """
@@ -294,7 +365,7 @@ class Agent:
             conversation_id: 会话ID
 
         Yields:
-            回答片段
+            回答片段（纯文本格式）
         """
         if not self.llm:
             yield "抱歉，LLM服务未配置，请检查API密钥设置。"
@@ -309,8 +380,9 @@ class Agent:
 要求：
 1. 基于提供的信息回答，如果信息不足请诚实说明
 2. 回答要准确、详细、有条理
-3. 如果是技术问题，尽量提供具体的示例或步骤
-4. 使用中文回答"""),
+3. 使用纯文本格式输出，不要使用Markdown格式（不要用#、**、|等符号）
+4. 使用中文回答
+5. 重要：直接输出纯文本，不要添加任何格式标记"""),
             MessagesPlaceholder(variable_name="history"),
             ("human", """
 相关知识库信息:
@@ -318,7 +390,7 @@ class Agent:
 
 用户问题: {question}
 
-请回答:""")
+请用纯文本格式回答（不要使用Markdown）:""")
         ])
 
         chain = prompt | self.llm | StrOutputParser()
@@ -340,7 +412,7 @@ class Agent:
             conversation_id: 会话ID
 
         Yields:
-            回答片段
+            回答片段（纯文本格式）
         """
         if not self.llm:
             yield "抱歉，LLM服务未配置，请检查API密钥设置。"
@@ -350,23 +422,24 @@ class Agent:
         history = self.memory.get_langchain_messages(conversation_id)
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """你是一个专业的技术导师。请根据知识库信息，为用户提供详细的分步骤解释。
+            ("system", """你是一个专业的知识库助手。请根据知识库信息，为用户提供详细的解释。
 
-请灵活组织回答，建议包含以下部分（可根据实际内容调整）：
+请用纯文本格式组织回答，建议包含以下部分（可根据实际内容调整）：
 
-## 概念介绍
+概念介绍：
 [简要介绍相关概念和背景]
 
-## 核心原理
+核心内容：
 [详细解释核心原理和机制]
 
-## 实现步骤
+具体步骤：
 [详细的分步骤说明，每步包含具体操作]
 
-## 注意事项
+注意事项：
 [仅在有实用建议时包含]
 
 注意：
+- 使用纯文本格式，不要使用Markdown格式（不要用#、**、|等符号）
 - 根据实际内容灵活调整结构
 - 不要强行填充无关内容
 - 重点突出实用性和可操作性
@@ -378,7 +451,7 @@ class Agent:
 
 用户问题: {question}
 
-请回答:""")
+请用纯文本格式回答（不要使用Markdown）:""")
         ])
 
         chain = prompt | self.llm | StrOutputParser()
