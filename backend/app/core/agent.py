@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import List, Dict, Any, Optional, Generator
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
@@ -62,6 +62,7 @@ class Agent:
     def query_router(self, query: str) -> str:
         """
         查询路由 - 根据查询类型选择不同的处理方式
+        使用关键词匹配，避免LLM调用，提高响应速度
 
         Args:
             query: 用户查询
@@ -69,94 +70,36 @@ class Agent:
         Returns:
             路由类型 ('list', 'detail', 'general')
         """
-        prompt = ChatPromptTemplate.from_template("""
-根据用户的问题，将其分类为以下三种类型之一：
+        query_lower = query.lower()
 
-1. 'list' - 用户想要获取文档列表或推荐，只需要文档名称
-   例如：推荐几个文档、有哪些教程、给我3个相关的文章
+        # 列表查询关键词
+        list_keywords = ['推荐', '有哪些', '列出', '几个', '一些', '哪些', '排行', '汇总']
+        if any(keyword in query_lower for keyword in list_keywords):
+            return 'list'
 
-2. 'detail' - 用户想要具体的解释或详细信息
-   例如：RAG是什么、如何实现向量检索、混合检索的原理
+        # 详细查询关键词（包含"怎么"、"如何"、"为什么"、"原理"等）
+        detail_keywords = ['怎么', '如何', '为什么', '原理', '步骤', '方法', '教程', '详细', '介绍']
+        if any(keyword in query_lower for keyword in detail_keywords):
+            return 'detail'
 
-3. 'general' - 其他一般性问题
-   例如：什么是向量数据库、嵌入模型的作用
-
-请只返回分类结果：list、detail 或 general
-
-用户问题: {query}
-
-分类结果:""")
-
-        if not self.llm:
-            return "general"
-
-        chain = prompt | self.llm | StrOutputParser()
-        result = chain.invoke({"query": query}).strip().lower()
-
-        # 确保返回有效的路由类型
-        if result in ['list', 'detail', 'general']:
-            return result
-        else:
-            return 'general'  # 默认类型
+        # 默认为一般查询
+        return 'general'
 
     # ==================== 查询重写 ====================
 
     def query_rewrite(self, query: str) -> str:
         """
-        智能查询重写 - 让大模型判断是否需要重写查询
+        智能查询重写 - 简化版本，避免LLM调用
+        直接返回原查询，提高响应速度
 
         Args:
             query: 原始查询
 
         Returns:
-            重写后的查询或原查询
+            原始查询（不做修改）
         """
-        prompt = PromptTemplate(
-            template="""
-你是一个智能查询分析助手。请分析用户的查询，判断是否需要重写以提高知识库搜索效果。
-
-原始查询: {query}
-
-分析规则：
-1. **具体明确的查询**（直接返回原查询）：
-   - 包含具体概念名称：如"RAG是什么"、"向量检索的原理"
-   - 明确的技术询问：如"如何实现混合检索"、"FAISS的使用方法"
-   - 具体的技术问题：如"RRF算法是什么"、"BM25的原理"
-
-2. **模糊不清的查询**（需要重写）：
-   - 过于宽泛：如"介绍一下"、"有什么内容"、"推荐一些"
-   - 缺乏具体信息：如"检索"、"嵌入"、"向量"
-   - 口语化表达：如"想了解点什么"、"有什么好的资料吗"
-
-重写原则：
-- 保持原意不变
-- 增加相关技术术语
-- 保持简洁性
-
-示例：
-- "介绍一下" -> "RAG技术入门介绍"
-- "有什么内容" -> "知识库中的技术文档内容"
-- "检索" -> "检索技术详解"
-- "RAG是什么" -> "RAG是什么"（保持原查询）
-- "向量检索的原理" -> "向量检索的原理"（保持原查询）
-
-请输出最终查询（如果不需要重写就返回原查询）:""",
-            input_variables=["query"]
-        )
-
-        if not self.llm:
-            return query
-
-        chain = prompt | self.llm | StrOutputParser()
-        response = chain.invoke({"query": query}).strip()
-
-        # 记录重写结果
-        if response != query:
-            logger.info(f"查询已重写: '{query}' -> '{response}'")
-        else:
-            logger.info(f"查询无需重写: '{query}'")
-
-        return response
+        # 优化：直接返回原查询，避免额外的LLM调用
+        return query
 
     # ==================== 上下文构建 ====================
 

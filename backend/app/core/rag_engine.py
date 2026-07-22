@@ -3,12 +3,19 @@ RAG引擎 - 文档解析、向量化、检索、重排序
 完整实现C8的所有核心功能
 """
 
+import os
 import hashlib
 import logging
 import uuid
 import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+# 禁用HuggingFace警告
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# 禁用FAISS的OpenMP警告
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
@@ -17,6 +24,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers.bm25 import BM25Retriever
 
 logger = logging.getLogger(__name__)
+
+# 降低第三方库的日志级别
+logging.getLogger("langchain_huggingface").setLevel(logging.WARNING)
+logging.getLogger("transformers").setLevel(logging.WARNING)
+logging.getLogger("faiss").setLevel(logging.WARNING)
 
 
 class RAGEngine:
@@ -345,9 +357,11 @@ class RAGEngine:
         """
         load_path = path or self.config.vector_store.persist_dir
         index_path = Path(load_path)
+        index_file = index_path / "index.faiss"
 
-        if not index_path.exists():
-            logger.info("向量索引不存在，需要重新构建")
+        # 先检查索引文件是否存在，避免不必要的错误日志
+        if not index_file.exists():
+            logger.info("向量索引文件不存在，需要重新构建")
             return False
 
         try:
