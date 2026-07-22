@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 
 # 降低第三方库的日志级别
 logging.getLogger("langchain_huggingface").setLevel(logging.WARNING)
-logging.getLogger("transformers").setLevel(logging.WARNING)
+logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("faiss").setLevel(logging.WARNING)
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class RAGEngine:
