@@ -3,6 +3,7 @@ CareerCopilot Streamlit Demo
 启动方式: streamlit run streamlit_app.py
 """
 
+import json
 import os
 import requests
 import streamlit as st
@@ -51,82 +52,101 @@ with tab1:
         if not jd_text or not resume_text:
             st.error("请填写JD和简历内容")
         else:
-            with st.spinner("正在分析中，Agent正在调用多个工具..."):
-                try:
-                    resp = requests.post(
-                        f"{api_url}/career/analyze",
-                        json={"jd_text": jd_text, "resume_text": resume_text},
-                        timeout=120,
-                    )
-                    if resp.status_code == 200:
-                        result = resp.json()
+            # SSE 流式分析 — 实时显示进度
+            progress_placeholder = st.empty()
+            result_area = st.container()
 
-                        # 匹配度仪表盘
-                        score = result.get("score", 0)
-                        st.metric("综合匹配度", f"{score}%")
+            try:
+                resp = requests.post(
+                    f"{api_url}/career/analyze-stream",
+                    json={"jd_text": jd_text, "resume_text": resume_text},
+                    timeout=300,
+                    stream=True,
+                )
 
-                        # 技能匹配详情
-                        skill_match = result.get("skill_match", {})
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("技能匹配", f"{skill_match.get('skill_score', score)}%")
-                        with col_b:
-                            st.metric("项目匹配", f"{skill_match.get('project_score', 0)}%")
-                        with col_c:
-                            st.metric("经验匹配", f"{skill_match.get('experience_score', 0)}%")
+                if resp.status_code != 200:
+                    st.error(f"分析失败: {resp.text}")
+                else:
+                    final_result = None
+                    for line in resp.iter_lines(decode_unicode=True):
+                        if not line or not line.startswith("data: "):
+                            continue
+                        event = json.loads(line[6:])
 
-                        # Markdown 报告
-                        report = result.get("report", {})
-                        md_report = report.get("summary", "")
-                        if md_report:
-                            st.markdown(md_report)
+                        step = event.get("step", 0)
+                        status = event.get("status", "")
+                        message = event.get("message", "")
 
-                        # 缺失技能
-                        missing = result.get("missing_skills", [])
-                        if missing:
-                            st.subheader("缺失技能")
-                            for skill in missing:
-                                st.markdown(f"- {skill}")
+                        if status == "processing":
+                            progress_placeholder.info(f"⏳ {message}")
+                        elif status == "done":
+                            progress_placeholder.success(f"✅ {message}")
+                        elif status == "complete":
+                            final_result = event.get("data", {})
+                            progress_placeholder.success("✅ 分析完成！")
+                        elif status == "error":
+                            progress_placeholder.error(f"❌ {message}")
 
-                        # 面试问题
-                        questions = result.get("interview_questions", {})
-                        tech_qs = questions.get("technical_questions", [])
-                        if tech_qs:
-                            st.subheader("预测面试题")
-                            for q in tech_qs[:5]:
-                                with st.expander(q.get("question", "")):
-                                    st.markdown(f"**难度**: {q.get('difficulty', '')}")
-                                    st.markdown(f"**参考答案**: {q.get('reference_answer', '')}")
+                    # 展示最终结果
+                    if final_result:
+                        with result_area:
+                            score = final_result.get("score", 0)
+                            st.metric("综合匹配度", f"{score}%")
 
-                        # 简历优化
-                        opt = result.get("resume_optimization", {})
-                        optimizations = opt.get("optimizations", [])
-                        if optimizations:
-                            st.subheader("简历优化建议")
-                            for o in optimizations:
-                                with st.expander(f"优化: {o.get('project_name', '')}"):
-                                    st.markdown(f"**原始**: {o.get('original', '')}")
-                                    st.markdown(f"**优化后**: {o.get('optimized', '')}")
-                                    st.markdown(f"**原因**: {o.get('reason', '')}")
+                            skill_match = final_result.get("skill_match", {})
+                            col_a, col_b, col_c = st.columns(3)
+                            with col_a:
+                                st.metric("技能匹配", f"{skill_match.get('skill_score', score)}%")
+                            with col_b:
+                                st.metric("项目匹配", f"{skill_match.get('project_score', 0)}%")
+                            with col_c:
+                                st.metric("经验匹配", f"{skill_match.get('experience_score', 0)}%")
 
-                        # 岗位推荐
-                        recs = result.get("job_recommendations", {})
-                        recommendations = recs.get("recommendations", [])
-                        if recommendations:
-                            st.subheader("推荐岗位")
-                            for rec in recommendations:
-                                st.markdown(
-                                    f"- **{rec.get('position', '')}** (匹配度: {rec.get('score', 0)}%)"
-                                    f"\n  {rec.get('reason', '')}"
-                                )
+                            report = final_result.get("report", {})
+                            md_report = report.get("summary", "")
+                            if md_report:
+                                st.markdown(md_report)
 
-                        # 工具使用
-                        tools = result.get("tools_used", [])
-                        st.caption(f"Agent调用工具: {', '.join(tools)}")
-                    else:
-                        st.error(f"分析失败: {resp.text}")
-                except Exception as e:
-                    st.error(f"请求失败: {e}")
+                            missing = final_result.get("missing_skills", [])
+                            if missing:
+                                st.subheader("缺失技能")
+                                for skill in missing:
+                                    st.markdown(f"- {skill}")
+
+                            questions = final_result.get("interview_questions", {})
+                            tech_qs = questions.get("technical_questions", [])
+                            if tech_qs:
+                                st.subheader("预测面试题")
+                                for q in tech_qs[:5]:
+                                    with st.expander(q.get("question", "")):
+                                        st.markdown(f"**难度**: {q.get('difficulty', '')}")
+                                        st.markdown(f"**参考答案**: {q.get('reference_answer', '')}")
+
+                            opt = final_result.get("resume_optimization", {})
+                            optimizations = opt.get("optimizations", [])
+                            if optimizations:
+                                st.subheader("简历优化建议")
+                                for o in optimizations:
+                                    with st.expander(f"优化: {o.get('project_name', '')}"):
+                                        st.markdown(f"**原始**: {o.get('original', '')}")
+                                        st.markdown(f"**优化后**: {o.get('optimized', '')}")
+                                        st.markdown(f"**原因**: {o.get('reason', '')}")
+
+                            recs = final_result.get("job_recommendations", {})
+                            recommendations = recs.get("recommendations", [])
+                            if recommendations:
+                                st.subheader("推荐岗位")
+                                for rec in recommendations:
+                                    st.markdown(
+                                        f"- **{rec.get('position', '')}** (匹配度: {rec.get('score', 0)}%)"
+                                        f"\n  {rec.get('reason', '')}"
+                                    )
+
+                            tools = final_result.get("tools_used", [])
+                            st.caption(f"Agent调用工具: {', '.join(tools)}")
+
+            except Exception as e:
+                st.error(f"请求失败: {e}")
 
 # ---- Tab 2: 面试模拟 ----
 with tab2:

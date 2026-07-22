@@ -801,8 +801,129 @@ class Agent:
             "tools_used": tools_used,
         }
 
-    @staticmethod
-    def _get_level(score: int) -> str:
+    async def career_analyze_stream(
+        self,
+        jd_text: str,
+        resume_text: str,
+        conversation_id: Optional[str] = None,
+    ):
+        """
+        求职分析流式版本 — 逐步yield进度事件，每完成一步推送结果
+        """
+        tools_used: List[str] = []
+
+        if not conversation_id:
+            conversation_id = self.memory.create_conversation("求职分析")
+
+        # Step 1: JD 解析
+        yield {"step": 1, "status": "processing", "message": "正在解析岗位JD..."}
+        jd_data = await asyncio.to_thread(self.jd_parser.parse_text, jd_text)
+        tools_used.append("jd_parser")
+        yield {"step": 1, "status": "done", "message": f"JD解析完成: {jd_data.get('position', '')}", "data": jd_data}
+
+        # Step 2: 简历解析
+        yield {"step": 2, "status": "processing", "message": "正在解析简历..."}
+        resume_data = await asyncio.to_thread(self.resume_parser.parse_text, resume_text)
+        tools_used.append("resume_parser")
+        yield {"step": 2, "status": "done", "message": f"简历解析完成: {resume_data.get('name', '')}", "data": resume_data}
+
+        # Step 3: 多维评分
+        yield {"step": 3, "status": "processing", "message": "正在进行技能匹配分析..."}
+        match_result = await asyncio.to_thread(
+            self.skill_matcher.multi_dimension_match, jd_data, resume_data
+        )
+        tools_used.append("skill_matcher")
+        score = match_result.get("score", 0)
+        yield {"step": 3, "status": "done", "message": f"评分完成: {score}分", "data": match_result}
+
+        # Step 4: 知识库检索
+        yield {"step": 4, "status": "processing", "message": "正在检索学习资料..."}
+        learning_plan: List[Dict[str, Any]] = []
+        rag_context = ""
+        missing_skills = match_result.get("skill_match", match_result).get("missing_skills", [])
+        search_result = {}
+        if missing_skills:
+            search_result = await asyncio.to_thread(
+                self.knowledge_search.search_skill_gap, missing_skills
+            )
+            learning_plan = await asyncio.to_thread(
+                self.knowledge_search.get_learning_plan, missing_skills
+            )
+            tools_used.append("knowledge_search")
+            for skill_result in search_result.get("skill_results", []):
+                for r in skill_result.get("results", []):
+                    rag_context += r.get("content", "") + "\n"
+        yield {"step": 4, "status": "done", "message": f"检索完成，缺失{len(missing_skills)}项技能"}
+
+        # Step 5: 面试问题生成
+        yield {"step": 5, "status": "processing", "message": "正在生成面试问题..."}
+        interview_questions = await asyncio.to_thread(
+            self.interview_generator.generate_from_skill_gap,
+            missing_skills, jd_data, resume_data,
+            rag_context[:3000] if rag_context else "",
+        )
+        tools_used.append("interview_generator")
+        tech_count = len(interview_questions.get("technical_questions", []))
+        yield {"step": 5, "status": "done", "message": f"生成{tech_count}道面试题"}
+
+        # Step 6: 简历优化
+        yield {"step": 6, "status": "processing", "message": "正在生成简历优化建议..."}
+        resume_optimization: Dict[str, Any] = {}
+        if self.resume_optimizer:
+            ref_cases = ""
+            for skill_result in search_result.get("skill_results", []):
+                for r in skill_result.get("results", []):
+                    ref_cases += r.get("content", "")[:200] + "\n"
+            resume_optimization = await asyncio.to_thread(
+                self.resume_optimizer.optimize, jd_data, resume_data, ref_cases[:2000]
+            )
+            tools_used.append("resume_optimizer")
+        opt_count = len(resume_optimization.get("optimizations", []))
+        yield {"step": 6, "status": "done", "message": f"生成{opt_count}条优化建议"}
+
+        # Step 7: 岗位推荐
+        yield {"step": 7, "status": "processing", "message": "正在匹配推荐岗位..."}
+        job_recommendations: Dict[str, Any] = {}
+        if self.job_recommender:
+            job_recommendations = await asyncio.to_thread(
+                self.job_recommender.recommend_from_resume, resume_data
+            )
+            tools_used.append("job_recommender")
+        rec_count = len(job_recommendations.get("recommendations", []))
+        yield {"step": 7, "status": "done", "message": f"推荐{rec_count}个岗位"}
+
+        # Step 8: 生成报告
+        yield {"step": 8, "status": "processing", "message": "正在生成分析报告..."}
+        md_report = self.report_generator.generate(
+            jd_data=jd_data, resume_data=resume_data, match_result=match_result,
+            learning_plan=learning_plan, interview_questions=interview_questions,
+            resume_optimization=resume_optimization, job_recommendations=job_recommendations,
+        )
+        report = {"summary": md_report, "level": self._get_level(score)}
+        tools_used.append("report_generator")
+
+        # 记录对话
+        self.memory.add_message(conversation_id, "user", f"[求职分析] JD: {jd_text[:100]}...")
+        self.memory.add_message(conversation_id, "assistant", report["summary"][:500])
+
+        # 最终结果
+        yield {
+            "step": 0, "status": "complete", "message": "分析完成",
+            "data": {
+                "conversation_id": conversation_id,
+                "score": score,
+                "job_analysis": jd_data,
+                "resume_analysis": resume_data,
+                "skill_match": match_result,
+                "missing_skills": missing_skills,
+                "learning_plan": learning_plan,
+                "interview_questions": interview_questions,
+                "resume_optimization": resume_optimization,
+                "job_recommendations": job_recommendations,
+                "report": report,
+                "tools_used": tools_used,
+            },
+        }
         if score >= 80:
             return "高度匹配"
         elif score >= 60:
