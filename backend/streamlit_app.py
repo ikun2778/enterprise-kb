@@ -173,34 +173,76 @@ with tab1:
     col_input, col_result = st.columns([1, 1.2])
 
     with col_input:
+        # ---- JD 输入 ----
         st.markdown("##### 📄 岗位 JD")
-        jd_text = st.text_area(
-            "JD", height=200, placeholder="粘贴岗位 JD 文本...", key="jd_input", label_visibility="collapsed"
+        jd_file = st.file_uploader(
+            "上传 JD 文件", type=["pdf", "md", "txt"], key="jd_file", label_visibility="collapsed",
+            help="支持 PDF / Markdown / TXT 格式",
         )
+        jd_text = ""
+        if jd_file:
+            st.caption(f"已上传: {jd_file.name} ({jd_file.size // 1024}KB)")
+        else:
+            jd_text = st.text_area(
+                "或粘贴 JD 文本", height=150, placeholder="粘贴岗位 JD 文本...", key="jd_input", label_visibility="collapsed"
+            )
 
-        st.markdown("##### 📋 简历内容")
-        resume_text = st.text_area(
-            "简历", height=200, placeholder="粘贴简历文本...", key="resume_input", label_visibility="collapsed"
+        st.markdown("")
+
+        # ---- 简历输入 ----
+        st.markdown("##### 📋 简历")
+        resume_file = st.file_uploader(
+            "上传简历文件", type=["pdf", "md", "txt"], key="resume_file", label_visibility="collapsed",
+            help="支持 PDF / Markdown / TXT 格式",
         )
+        resume_text = ""
+        if resume_file:
+            st.caption(f"已上传: {resume_file.name} ({resume_file.size // 1024}KB)")
+        else:
+            resume_text = st.text_area(
+                "或粘贴简历文本", height=150, placeholder="粘贴简历文本...", key="resume_input", label_visibility="collapsed"
+            )
 
         analyze_btn = st.button("🚀 开始分析", type="primary", use_container_width=True)
 
     with col_result:
         if analyze_btn:
-            if not jd_text or not resume_text:
-                st.error("请填写 JD 和简历内容")
+            has_jd = jd_file is not None or (jd_text and jd_text.strip())
+            has_resume = resume_file is not None or (resume_text and resume_text.strip())
+            if not has_jd or not has_resume:
+                st.error("请上传或粘贴 JD 和简历内容")
             else:
                 # 进度显示区
                 st.markdown("##### ⚡ Agent 分析进度")
                 progress_area = st.container()
 
                 try:
-                    resp = requests.post(
-                        f"{api_url}/career/analyze-stream",
-                        json={"jd_text": jd_text, "resume_text": resume_text},
-                        timeout=300,
-                        stream=True,
-                    )
+                    # 构建请求：文件上传走 /analyze-upload，纯文本走 /analyze-stream
+                    if jd_file or resume_file:
+                        files = {}
+                        data = {}
+                        if jd_file:
+                            files["jd_file"] = (jd_file.name, jd_file.getvalue(), jd_file.type or "application/octet-stream")
+                        else:
+                            data["jd_text"] = jd_text
+                        if resume_file:
+                            files["resume_file"] = (resume_file.name, resume_file.getvalue(), resume_file.type or "application/octet-stream")
+                        else:
+                            data["resume_text"] = resume_text
+                        resp = requests.post(
+                            f"{api_url}/career/analyze-upload",
+                            files=files,
+                            data=data,
+                            timeout=300,
+                            stream=True,
+                        )
+                    else:
+                        resp = requests.post(
+                            f"{api_url}/career/analyze-stream",
+                            json={"jd_text": jd_text, "resume_text": resume_text},
+                            timeout=300,
+                            stream=True,
+                        )
 
                     if resp.status_code != 200:
                         st.error(f"分析失败: {resp.text}")
