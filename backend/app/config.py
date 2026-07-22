@@ -1,5 +1,5 @@
 """
-企业知识库助手 - 配置文件
+CareerCopilot - 配置文件
 """
 
 import os
@@ -32,9 +32,9 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 @dataclass
 class LLMConfig:
     """LLM配置"""
-    provider: str = os.getenv("LLM_PROVIDER", "moonshot")
-    model: str = os.getenv("LLM_MODEL", "moonshot-v1-8k")
-    api_key: str = os.getenv("MOONSHOT_API_KEY", "")
+    provider: str = os.getenv("LLM_PROVIDER", "mimo")
+    model: str = os.getenv("LLM_MODEL", "mimo-v2.5-pro")
+    api_key: str = os.getenv("MIMO_API_KEY", "")
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
     max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 
@@ -66,15 +66,16 @@ class RAGConfig:
     """RAG配置"""
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "500"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "50"))
-    top_k: int = int(os.getenv("TOP_K", "5"))
+    top_k: int = int(os.getenv("TOP_K", "3"))
     similarity_threshold: float = float(os.getenv("SIMILARITY_THRESHOLD", "0.3"))
+    max_context_length: int = int(os.getenv("MAX_CONTEXT_LENGTH", "3000"))
 
 
 @dataclass
 class AppConfig:
     """应用配置"""
-    app_name: str = "企业智能知识库助手"
-    version: str = "1.0.0"
+    app_name: str = "CareerCopilot"
+    version: str = "2.0.0"
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     host: str = os.getenv("HOST", "0.0.0.0")
     port: int = int(os.getenv("PORT", "8000"))

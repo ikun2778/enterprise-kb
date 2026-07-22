@@ -36,14 +36,12 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 class RAGEngine:
     """RAG引擎核心类"""
 
-    # 分类映射（适配生活百科文档目录结构）
+    # 分类映射（适配CareerCopilot知识库目录结构）
     CATEGORY_MAPPING = {
-        '食品安全': '食品安全',
-        '出行指南': '出行指南',
-        '法律常识': '法律常识',
-        '健康生活': '健康生活',
-        '家居安全': '家居安全',
-        '消费维权': '消费维权',
+        'AI岗位技能': 'AI岗位技能',
+        '面试题库': '面试题库',
+        '项目案例': '项目案例',
+        '岗位JD': '岗位JD',
     }
     CATEGORY_LABELS = list(dict.fromkeys(CATEGORY_MAPPING.values()))
 

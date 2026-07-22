@@ -85,8 +85,8 @@ async def main():
 
     # 检查API密钥
     if not config.llm.api_key:
-        print("\n⚠️  警告: 未设置MOONSHOT_API_KEY，LLM功能将不可用")
-        print("   请在 .env 文件中配置 MOONSHOT_API_KEY")
+        print("\n⚠️  警告: 未设置MIMO_API_KEY，LLM功能将不可用")
+        print("   请在 .env 文件中配置 MIMO_API_KEY")
 
     print("\n💡 输入问题开始对话，输入 'quit' 或 '退出' 结束")
     print("-" * 60)

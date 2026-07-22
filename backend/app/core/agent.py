@@ -1,9 +1,9 @@
 """
-Agent核心 - 查询路由、查询重写、多种回答模式、流式输出
-完整实现C8的所有核心功能
+Agent核心 - 查询路由、查询重写、多种回答模式、流式输出、求职分析
 """
 
 import re
+import json
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional, Generator
@@ -15,6 +15,16 @@ from langchain_openai import ChatOpenAI
 
 from .rag_engine import RAGEngine
 from .memory import ConversationMemory
+
+from tools.jd_parser import JDParser
+from tools.resume_parser import ResumeParser
+from tools.skill_matcher import SkillMatcher
+from tools.knowledge_search import KnowledgeSearchTool
+from tools.interview_generator import InterviewGenerator
+from tools.resume_optimizer import ResumeOptimizer
+from tools.mock_interview import MockInterviewAgent
+from tools.job_recommend import JobRecommender
+from app.services.report_generator import ReportGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +99,8 @@ def markdown_to_text(md_text: str) -> str:
 class Agent:
     """Agent核心类"""
 
-    # Moonshot API 基础URL
-    MOONSHOT_BASE_URL = "https://api.moonshot.cn/v1"
+    # MiMo API (OpenAI兼容协议)
+    MIMO_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1"
 
     def __init__(self, config, rag_engine: RAGEngine, memory: ConversationMemory):
         """
@@ -108,6 +118,30 @@ class Agent:
 
         self._init_llm()
 
+        # 求职分析工具（延迟初始化，在 LLM 初始化之后）
+        self.jd_parser: Optional[JDParser] = None
+        self.resume_parser: Optional[ResumeParser] = None
+        self.skill_matcher: Optional[SkillMatcher] = None
+        self.knowledge_search: Optional[KnowledgeSearchTool] = None
+        self.interview_generator: Optional[InterviewGenerator] = None
+        self.resume_optimizer: Optional[ResumeOptimizer] = None
+        self.mock_interview: Optional[MockInterviewAgent] = None
+        self.job_recommender: Optional[JobRecommender] = None
+        self.report_generator = ReportGenerator()
+
+        if self.llm:
+            self.jd_parser = JDParser(self.llm)
+            self.resume_parser = ResumeParser(self.llm)
+            self.skill_matcher = SkillMatcher(
+                embeddings=self.rag_engine.embeddings,
+            )
+            self.knowledge_search = KnowledgeSearchTool(self.rag_engine)
+            self.interview_generator = InterviewGenerator(self.llm)
+            self.resume_optimizer = ResumeOptimizer(self.llm)
+            self.mock_interview = MockInterviewAgent(self.llm)
+            self.job_recommender = JobRecommender(self.rag_engine)
+            logger.info("求职分析工具初始化完成")
+
     def _init_llm(self):
         """初始化LLM"""
         logger.info(f"初始化LLM: {self.config.llm.model}")
@@ -121,7 +155,7 @@ class Agent:
             temperature=self.config.llm.temperature,
             max_tokens=self.config.llm.max_tokens,
             openai_api_key=self.config.llm.api_key,
-            openai_api_base=self.MOONSHOT_BASE_URL,
+            openai_api_base=self.MIMO_BASE_URL,
         )
         logger.info("LLM初始化完成")
 
@@ -639,4 +673,187 @@ class Agent:
             "tools_used": [],
             "route_type": route_type,
             "stream": False
+        }
+
+    # ==================== 求职分析（CareerCopilot 核心能力） ====================
+
+    async def career_analyze(
+        self,
+        jd_text: str,
+        resume_text: str,
+        conversation_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        求职分析主流程（升级版）：
+        JD解析 → 简历解析 → 多维评分 → 知识检索 → 面试生成 → 简历优化 → 岗位推荐 → 输出报告
+        """
+        tools_used: List[str] = []
+
+        if not conversation_id:
+            conversation_id = self.memory.create_conversation("求职分析")
+
+        # Step 1: JD 解析
+        logger.info("Step 1: 解析岗位JD...")
+        jd_data = await asyncio.to_thread(self.jd_parser.parse_text, jd_text)
+        tools_used.append("jd_parser")
+
+        # Step 2: 简历解析
+        logger.info("Step 2: 解析简历...")
+        resume_data = await asyncio.to_thread(self.resume_parser.parse_text, resume_text)
+        tools_used.append("resume_parser")
+
+        # Step 3: 多维评分（技能50% + 项目30% + 经验20%）
+        logger.info("Step 3: 多维评分分析...")
+        match_result = await asyncio.to_thread(
+            self.skill_matcher.multi_dimension_match, jd_data, resume_data
+        )
+        tools_used.append("skill_matcher")
+
+        # Step 4: 知识库检索（针对缺失技能）
+        logger.info("Step 4: 知识库检索学习资料...")
+        learning_plan: List[Dict[str, Any]] = []
+        rag_context = ""
+        missing_skills = match_result.get("skill_match", match_result).get("missing_skills", [])
+        if missing_skills:
+            search_result = await asyncio.to_thread(
+                self.knowledge_search.search_skill_gap, missing_skills
+            )
+            learning_plan = await asyncio.to_thread(
+                self.knowledge_search.get_learning_plan, missing_skills
+            )
+            tools_used.append("knowledge_search")
+            for skill_result in search_result.get("skill_results", []):
+                for r in skill_result.get("results", []):
+                    rag_context += r.get("content", "") + "\n"
+
+        # Step 5: 面试问题生成
+        logger.info("Step 5: 生成面试问题...")
+        interview_questions = await asyncio.to_thread(
+            self.interview_generator.generate_from_skill_gap,
+            missing_skills,
+            jd_data,
+            resume_data,
+            rag_context[:3000] if rag_context else "",
+        )
+        tools_used.append("interview_generator")
+
+        # Step 6: 简历优化
+        logger.info("Step 6: 简历优化建议...")
+        resume_optimization: Dict[str, Any] = {}
+        if self.resume_optimizer:
+            # 构建参考案例
+            ref_cases = ""
+            for skill_result in (search_result if missing_skills else {}).get("skill_results", []):
+                for r in skill_result.get("results", []):
+                    ref_cases += r.get("content", "")[:200] + "\n"
+            resume_optimization = await asyncio.to_thread(
+                self.resume_optimizer.optimize, jd_data, resume_data, ref_cases[:2000]
+            )
+            tools_used.append("resume_optimizer")
+
+        # Step 7: 岗位推荐
+        logger.info("Step 7: 岗位推荐...")
+        job_recommendations: Dict[str, Any] = {}
+        if self.job_recommender:
+            job_recommendations = await asyncio.to_thread(
+                self.job_recommender.recommend_from_resume, resume_data
+            )
+            tools_used.append("job_recommender")
+
+        # Step 8: 生成 Markdown 报告
+        logger.info("Step 8: 生成求职分析报告...")
+        md_report = self.report_generator.generate(
+            jd_data=jd_data,
+            resume_data=resume_data,
+            match_result=match_result,
+            learning_plan=learning_plan,
+            interview_questions=interview_questions,
+            resume_optimization=resume_optimization,
+            job_recommendations=job_recommendations,
+        )
+
+        report = {
+            "summary": md_report,
+            "level": self._get_level(match_result.get("score", 0)),
+        }
+        tools_used.append("report_generator")
+
+        # 记录对话
+        self.memory.add_message(
+            conversation_id, "user", f"[求职分析] JD: {jd_text[:100]}..."
+        )
+        self.memory.add_message(
+            conversation_id, "assistant", report["summary"][:500]
+        )
+
+        return {
+            "conversation_id": conversation_id,
+            "score": match_result.get("score", 0),
+            "job_analysis": jd_data,
+            "resume_analysis": resume_data,
+            "skill_match": match_result,
+            "missing_skills": missing_skills,
+            "learning_plan": learning_plan,
+            "interview_questions": interview_questions,
+            "resume_optimization": resume_optimization,
+            "job_recommendations": job_recommendations,
+            "report": report,
+            "tools_used": tools_used,
+        }
+
+    @staticmethod
+    def _get_level(score: int) -> str:
+        if score >= 80:
+            return "高度匹配"
+        elif score >= 60:
+            return "较好匹配"
+        elif score >= 40:
+            return "部分匹配"
+        return "匹配度较低"
+
+    # ==================== 面试模拟 ====================
+
+    async def mock_interview_start(
+        self,
+        position: str = "AI Agent开发",
+        skills: Optional[List[str]] = None,
+        difficulty: str = "medium",
+    ) -> Dict[str, Any]:
+        """开始一轮面试模拟，生成第一个问题"""
+        if not self.mock_interview:
+            return {"error": "面试模拟工具未初始化"}
+        question_data = await asyncio.to_thread(
+            self.mock_interview.generate_question,
+            position=position,
+            skills=skills,
+            difficulty=difficulty,
+        )
+        return {
+            "position": position,
+            "question_data": question_data,
+        }
+
+    async def mock_interview_answer(
+        self,
+        position: str,
+        question: str,
+        key_points: List[str],
+        reference_answer: str,
+        user_answer: str,
+    ) -> Dict[str, Any]:
+        """评价用户的面试回答"""
+        if not self.mock_interview:
+            return {"error": "面试模拟工具未初始化"}
+        evaluation = await asyncio.to_thread(
+            self.mock_interview.evaluate_answer,
+            position=position,
+            question=question,
+            key_points=key_points,
+            reference_answer=reference_answer,
+            user_answer=user_answer,
+        )
+        return {
+            "question": question,
+            "user_answer": user_answer,
+            "evaluation": evaluation,
         }

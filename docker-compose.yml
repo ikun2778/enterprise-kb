@@ -1,19 +1,57 @@
 version: '3.8'
 
 services:
-  backend:
+  # ==================== FastAPI 后端 ====================
+  careercopilot-backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
+    container_name: careercopilot-backend
+    working_dir: /app/backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
     volumes:
-      - ./backend/data:/app/data
+      - vector_store:/app/backend/data/vector_store
+      - knowledge_data:/app/backend/data/knowledge_base
     env_file:
-      - ./backend/.env
+      - backend/.env
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
-    # 终端模式不需要暴露端口
-    # ports:
-    #   - "8000:8000"
-    stdin_open: true
-    tty: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ==================== Streamlit 前端 ====================
+  careercopilot-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: careercopilot-web
+    working_dir: /app/backend
+    command: >
+      streamlit run streamlit_app.py
+      --server.address 0.0.0.0
+      --server.port 8501
+      --server.headless true
+    ports:
+      - "8501:8501"
+    env_file:
+      - backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - API_BASE_URL=http://careercopilot-backend:8000/api
+    depends_on:
+      careercopilot-backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  vector_store:
+    name: careercopilot-vector-store
+  knowledge_data:
+    name: careercopilot-knowledge-data
